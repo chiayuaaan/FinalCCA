@@ -1890,11 +1890,59 @@ window.addEventListener('load', () => {
     }, 2500); // Wait a moment after the page loads
 });
 
-function initTacticalMap() {
-    // 1. Create Map (Centered on Taylor's university)
-    mapInstance = L.map('map-container', { zoomControl: false }).setView([3.064687339184538, 101.6164547802932], 13);
+// ==========================================
+// FIX 1: MISSING HELPER FUNCTIONS
+// ==========================================
 
-    // 2. Add Dark Mode Tiles (CartoDB Dark or OSM with CSS filter)
+// 1. Helper to create the cool HTML popups for the Map
+function createHexPopup(title, status, cpu, temp) {
+    const color = status === 'ONLINE' ? '#30D158' : '#FF453A';
+    return `
+        <div style="min-width:150px;">
+            <div style="border-bottom:1px solid #333; padding-bottom:5px; margin-bottom:5px; font-weight:bold; color:${color}">
+                ${title}
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; color:#aaa;">
+                <span>STATUS:</span> <span style="color:${color}; text-align:right">${status}</span>
+                <span>CPU:</span> <span style="text-align:right; color:white">${cpu}</span>
+                <span>TEMP:</span> <span style="text-align:right; color:white">${temp}</span>
+            </div>
+        </div>
+    `;
+}
+
+// 2. Helper to start the scrolling terminal on the map
+function startMapTerminal() {
+    const term = document.getElementById('map-terminal');
+    if(!term) return; // Safety check
+    
+    // Clear initial text
+    term.innerHTML = '';
+    
+    const verbs = ["SCANNING", "PINGING", "TRACING", "ENCRYPTING", "PACKET LOSS"];
+    const locs = ["192.168.0.1", "PROXY_GATE_4", "FIREWALL_N", "SAT_UPLINK"];
+    
+    setInterval(() => {
+        const v = verbs[Math.floor(Math.random() * verbs.length)];
+        const l = locs[Math.floor(Math.random() * locs.length)];
+        const time = new Date().toLocaleTimeString().split(' ')[0];
+        
+        const line = `<div style="margin-bottom:2px;">[${time}] ${v} > ${l}...</div>`;
+        
+        term.innerHTML += line;
+        term.scrollTop = term.scrollHeight; // Auto scroll to bottom
+        
+        // Keep it clean (remove old lines)
+        if(term.children.length > 15) term.removeChild(term.firstChild);
+        
+    }, 800); 
+}
+
+function initTacticalMap() {
+    // 1. Create Map (Centered on Taylor's University)
+    mapInstance = L.map('map-container', { zoomControl: false }).setView([3.063158, 101.616896], 14);
+
+    // 2. Add Dark Mode Tiles
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap',
         maxZoom: 19
@@ -1902,47 +1950,52 @@ function initTacticalMap() {
 
     // 3. Define Icon Styles
     const iconAsset = L.divIcon({ className: 'custom-div-icon', html: "<div class='blip secure'></div>", iconSize: [20, 20] });
-    const iconThreat = L.divIcon({ className: 'custom-div-icon', html: "<div class='blip danger'></div>", iconSize: [20, 20] });
-
-    // 4. Create Layers
-
-    // --- ASSETS LAYER ---
-    const hq = L.marker([3.0648421397587877, 101.6165108683629], {icon: iconAsset}).bindPopup(createHexPopup("HQ MAINFRAME", "ONLINE", "12%", "34°C"));
-    const serverFarm = L.marker([3.0591579138356226, 101.61580119169882], {icon: iconAsset}).bindPopup(createHexPopup("SERVER NODE A", "ONLINE", "87%", "65°C")); // High load example
-    const satLink = L.marker([3.083482147069677, 101.61690497072773], {icon: iconAsset}).bindPopup(createHexPopup("SAT LINK 4", "ONLINE", "25%", "43°C"));
     
+    // --- 4. CREATE LAYERS ---
+
+    // A. ASSETS LAYER (The Icons)
+    const hq = L.marker([3.063158, 101.616896], {icon: iconAsset})
+        .bindPopup(createHexPopup("HQ MAINFRAME", "ONLINE", "12%", "34°C"));
+        
+    const serverFarm = L.marker([3.059158, 101.615801], {icon: iconAsset})
+        .bindPopup(createHexPopup("SERVER NODE A", "ONLINE", "87%", "65°C"));
+        
+    const satLink = L.marker([3.083482, 101.616905], {icon: iconAsset})
+        .bindPopup(createHexPopup("SAT LINK 4", "ONLINE", "25%", "43°C"));
+
+    // * IMPORTANT: Add them to the layer group AND the map *
     mapLayers.assets = L.layerGroup([hq, serverFarm, satLink]).addTo(mapInstance);
 
-    // --- PERIMETER LAYER (Polygons/Circles) ---
-    // A "Safe Zone" circle around HQ
-    const geoFence = L.circle([3.064687339184538, 101.6164547802932], {
-        color: '#30D158', // Green
+
+    // B. PERIMETER LAYER (The Circles)
+    const geoFence = L.circle([3.063158, 101.616896], {
+        color: '#30D158',       // Green
         fillColor: '#30D158',
         fillOpacity: 0.1,
-        radius: 2500
+        radius: 1500            // <--- YOU MISSED THIS (Size of circle)
     });
 
-    // A "Weak Point" in the perimeter
-    const weakZone = L.circle([3.0850334449312444, 101.55052066294775], {
-        color: '#FF9F0A', // Orange warning
+    const weakZone = L.circle([3.085033, 101.550521], {
+        color: '#FF9F0A',       // Orange
         fillColor: '#FF9F0A',
         fillOpacity: 0.2,
-        radius: 1200
+        radius: 800             // <--- YOU MISSED THIS
     }).bindPopup("WARNING: FIREWALL THIN");
 
+    // * IMPORTANT: Add to layer group and map *
     mapLayers.perimeter = L.layerGroup([geoFence, weakZone]).addTo(mapInstance);
 
-    // --- TRAFFIC LAYER (Polylines) ---
-    // Lines connecting assets
-    const line1 = L.polyline([[3.064687339184538, 101.6164547802932], [3.0591579138356226, 101.61580119169882]], {color: '#0A84FF', weight: 2, className: 'traffic-line-anim'});
-    const line2 = L.polyline([[3.064687339184538, 101.6164547802932], [3.083482147069677, 101.61690497072773]], {color: '#0A84FF', weight: 2, className: 'traffic-line-anim'});
-    
-    // An external attack vector line
-    const attackLine = L.polyline([[3.0833949640820735, 101.58510796887653], [3.0850334449312444, 101.55052066294775]], {color: '#FF453A', weight: 3, className: 'traffic-line-anim'});
-    
-    mapLayers.traffic = L.layerGroup([line1, line2, attackLine]); 
-    // Note: Traffic is NOT added by default to show how toggle works
 
+    // C. TRAFFIC LAYER (The Lines)
+    const line1 = L.polyline([[3.063158, 101.616896], [3.059158, 101.615801]], {color: '#0A84FF', weight: 2, className: 'traffic-line-anim'});
+    const line2 = L.polyline([[3.063158, 101.616896], [3.083482, 101.616905]], {color: '#0A84FF', weight: 2, className: 'traffic-line-anim'});
+    const attackLine = L.polyline([[3.083395, 101.585108], [3.085033, 101.550521]], {color: '#FF453A', weight: 3, className: 'traffic-line-anim'});
+
+    // Traffic is usually OFF by default to keep map clean, so we DON'T .addTo(mapInstance) here
+    // The toggle button will handle adding it.
+    mapLayers.traffic = L.layerGroup([line1, line2, attackLine]);
+
+    // 5. Start the Scrolling Text
     startMapTerminal();
 }
 
